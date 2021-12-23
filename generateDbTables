@@ -1,0 +1,59 @@
+<?php
+
+// Class loader -----------------------------------------------------
+require_once "src/utils/ClassLoader.php";
+$loader = new src\utils\ClassLoader('.');
+$loader->register();
+// ------------------------------------------------------------------
+
+
+// Database ---------------------------------------------------------
+use Helloquent\ConnectionFactory;
+
+$keys = parse_ini_file("config/config.ini");
+ConnectionFactory::makeConnection($keys, dirname(__FILE__));
+// ------------------------------------------------------------------
+
+
+function getColumns(string $file): string
+{
+    $tokens = token_get_all(file_get_contents($file));
+    $columns = array();
+    foreach ($tokens as $token) {
+        if ($token[0] == T_COMMENT || $token[0] == T_DOC_COMMENT) {
+            $columns[] = trim($token[1], "//");
+        }
+    }
+    return implode(" , ", $columns);
+}
+
+function execute(string $sql)
+{
+    $db = ConnectionFactory::getConnection();
+    return $db->exec($sql);
+}
+
+$dir = dirname(__FILE__) . "/src/Models";
+$files = array_diff(scandir($dir), array('..', '.'));;
+foreach ($files as $value) {
+    $class = "src\\Models\\" . substr($value, 0, -4);
+
+    $Name = $class::getTableName();
+    $Key = $class::getPrimaryKey();
+    
+    $Columns = getColumns("src/Models/" . $value);
+    
+    if ($Key == "id") {
+        $Columns .= ", $Key INTEGER";
+        $Columns .= ", PRIMARY KEY($Key AUTOINCREMENT)";
+    } else {
+        $Columns .= ", PRIMARY KEY($Key)";
+    }
+
+    $script = trim(preg_replace('/\s+/', ' ', "CREATE TABLE $Name ($Columns);"));
+
+    if (false !== execute($script))
+        echo "Created table $Name \n";
+    else
+        echo "Couldn't create table $Name \n";
+}
